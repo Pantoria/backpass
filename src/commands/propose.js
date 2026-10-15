@@ -16,7 +16,7 @@ import { emitProgress } from "../progress.js";
 import { nestedCorpora, primaryMemoryFile } from "./analyze.js";
 import { mergeNestedProposals, nestedContext, routingFor } from "../nested.js";
 import { printUsage } from "./usage.js";
-import { applyCommand } from "../target.js";
+import { applyCommand, stateCommand } from "../target.js";
 import { closeRemoteDiscovery, discoverForRun } from "./scan.js";
 import { capTranscripts } from "../sample.js";
 import { isEvidenceFresh } from "../state.js";
@@ -310,19 +310,20 @@ const isEditCapViolation = (v) => /per-run cap is \d+/.test(v);
  * The old advice - a stronger model, a bigger budget, a higher edit cap - was printed for
  * every failure, including the ones where the model never spoke and the ones where the
  * budget was never the constraint. Each terminal condition has a different repair.
+ * `propose` is the command that re-runs synthesis for the same state (`stateCommand`).
  */
-export function synthesisFailureHint(err) {
+export function synthesisFailureHint(err, propose) {
   if (err.reason === "empty") {
-    return "the synthesis harness returned no text, so nothing about the model, the budget, or the edit cap was the constraint; run `backpass propose` again to start a fresh synthesis session";
+    return `the synthesis harness returned no text, so nothing about the model, the budget, or the edit cap was the constraint; run \`${propose}\` again to start a fresh synthesis session`;
   }
   if (err.reason === "unparseable") {
-    return "the model answered but not with a JSON object; run `backpass propose` again, or pin a different harness with --synthesis-agent";
+    return `the model answered but not with a JSON object; run \`${propose}\` again, or pin a different harness with --synthesis-agent`;
   }
   if (err.reason === "editing") {
-    return "the agent kept rewriting the staging copy instead of describing it; run `backpass propose` again to start fresh";
+    return `the agent kept rewriting the staging copy instead of describing it; run \`${propose}\` again to start fresh`;
   }
   if (err.reason === "edit-empty") {
-    return "the edit turn made no changes to the staging copy, so there was nothing for the annotation turn to describe; run `backpass propose` again, or pin a different harness with --synthesis-agent";
+    return `the edit turn made no changes to the staging copy, so there was nothing for the annotation turn to describe; run \`${propose}\` again, or pin a different harness with --synthesis-agent`;
   }
   const violations = err.violations || [];
   if (violations.some(isBudgetViolation)) {
@@ -331,7 +332,7 @@ export function synthesisFailureHint(err) {
   if (violations.some(isEditCapViolation)) {
     return "the annotation proposed more edits than the per-run learning rate allows: raise --max-edits, or re-run and let the next pass take the rest";
   }
-  return "the gates above are what the next synthesis must satisfy; run `backpass propose` again";
+  return `the gates above are what the next synthesis must satisfy; run \`${propose}\` again`;
 }
 
 /**
@@ -380,7 +381,7 @@ export async function cmdPropose(ctx) {
   } catch (err) {
     if (err instanceof ProposalViolation) {
       printSynthesisFailure(err, ctx.config.state);
-      throw new UserError(err.message, synthesisFailureHint(err));
+      throw new UserError(err.message, synthesisFailureHint(err, stateCommand("propose", ctx.config.state, ctx.scope)));
     }
     throw err;
   }

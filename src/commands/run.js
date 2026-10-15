@@ -8,7 +8,7 @@ import { skillDescriptionTokens } from "../skills.js";
 import { startTui } from "../tui/index.js";
 import { resolveMemoryFiles } from "../memory.js";
 import { nestedBudget } from "../nested.js";
-import { applyCommand } from "../target.js";
+import { applyCommand, stateCommand } from "../target.js";
 
 /**
  * The default command: one full backward pass.
@@ -127,7 +127,7 @@ export async function cmdRun(ctx) {
     tui?.stop();
     if (err instanceof ProposalViolation) {
       printSynthesisFailure(err, config.state);
-      throw new UserError(err.message, synthesisFailureHint(err));
+      throw new UserError(err.message, synthesisFailureHint(err, stateCommand("propose", config.state, scope)));
     }
     throw err;
   } finally {

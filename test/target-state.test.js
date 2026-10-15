@@ -36,7 +36,8 @@ if (argv.includes("config") && argv.includes("show")) {
   process.stdout.write(JSON.stringify({ agents: {} }) + "\\n");
   process.exit(0);
 }
-if (argv.includes("--file")) {
+// A synthesis turn answers with no text.
+if (argv.includes("--file") && !argv.some((arg) => arg.startsWith("backpass-synth-"))) {
   process.stdout.write(JSON.stringify({
     positive: [{ instruction: "AG-001", moment: "start", effect: "followed it", quote: "Ran make build as instructed." }],
     negative: [],
@@ -230,4 +231,26 @@ test("a target state shares the scope-level files and lives under the scope's ow
   assert.notEqual(other.proposalPath, rootState.proposalPath);
   assert.notEqual(other.evidenceDir, rootState.evidenceDir);
   if (process.platform !== "win32") assert.equal(fs.statSync(userRoot).mode & 0o777, 0o700);
+});
+
+test("a synthesis that fails in a target state says to re-run the target's own command", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "backpass-target-home-"));
+  const dir = initRepo({ "AGENTS.md": AGENTS, "CLAUDE.md": CLAUDE });
+  writeSession(home, "session-a", dir);
+  writeSession(home, "session-b", dir);
+  analyze(dir, home, ["--memory-file", "CLAUDE.md"]);
+
+  const failed = cli(dir, home, [
+    "propose",
+    "--harness",
+    "pi",
+    "--since",
+    "all",
+    "--synthesis-agent",
+    "pi",
+    "--memory-file",
+    "CLAUDE.md",
+  ]);
+  assert.equal(failed.status, 1, failed.output);
+  assert.match(failed.stderr, /run `backpass propose --memory-file CLAUDE\.md` again/);
 });
