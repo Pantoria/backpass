@@ -34,6 +34,9 @@ export async function cmdStatus(ctx) {
   const summary = state.readSummary();
   const proposal = state.readProposal();
   const rejections = state.readRejections();
+  const waiting = state
+    .listTargetProposals()
+    .map((other) => ({ ...other, apply: applyCommand({ surface: other.path }, scope) }));
   const userScope = scope?.kind === "user";
   const overflow = resolveOverflowTarget(repo.root, config.skillsDir, {
     claudeSkillsDir: userScope ? userClaudeSkillsDir() : undefined,
@@ -84,6 +87,7 @@ export async function cmdStatus(ctx) {
       hosts: hostCache,
       summary: summary ? { analyzedSessions: summary.analyzedSessions, totals: summary.totals } : null,
       proposal: proposal ? { generatedAt: proposal.generatedAt, edits: proposal.edits.length } : null,
+      targetProposals: waiting,
       rejections: Object.keys(rejections.entries).length,
       skills: skills.length,
     });
@@ -189,10 +193,8 @@ export async function cmdStatus(ctx) {
     if (fs.existsSync(surface)) out(color.dim(`  surface         ${surface}`));
     if (!proposal.violations?.length && proposal.edits.length) out(`  review with \`${applyCommand(state, scope)}\``);
   }
-  for (const other of state.listTargetProposals()) {
-    out(
-      `  ${other.path.padEnd(15)} ${other.edits} edit(s) · review with \`${applyCommand({ surface: other.path }, scope)}\``,
-    );
+  for (const other of waiting) {
+    out(`  ${other.path.padEnd(15)} ${other.edits} edit(s) · review with \`${other.apply}\``);
   }
 
   out("");

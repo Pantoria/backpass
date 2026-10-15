@@ -213,9 +213,10 @@ export class State {
   }
 
   /**
-   * Unapplied, gate-clean proposals kept by this scope's target states, so a command
-   * reading the default proposal can name the ones it is not reading. Empty for a
-   * target state: only the scope root holds `targets/`.
+   * Gate-clean proposals kept by this scope's target states that still wait for a review
+   * (not applied, and not every edit decided - `reviewedAt`), so a command reading the
+   * default proposal can name the ones it is not reading. Empty for a target state: only
+   * the scope root holds `targets/`.
    */
   listTargetProposals() {
     const dir = path.join(this.root, "targets");
@@ -224,7 +225,10 @@ export class State {
       .readdirSync(dir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => this.readJsonFile(path.join(dir, entry.name, "proposal.json"), null))
-      .filter((proposal) => proposal?.memoryFile?.path && !proposal.appliedAt && !proposal.violations?.length)
+      .filter(
+        (proposal) =>
+          proposal?.memoryFile?.path && !proposal.appliedAt && !proposal.reviewedAt && !proposal.violations?.length,
+      )
       .filter((proposal) => proposal.edits?.length)
       .map((proposal) => ({ path: proposal.memoryFile.path, edits: proposal.edits.length }))
       .sort((a, b) => a.path.localeCompare(b.path));

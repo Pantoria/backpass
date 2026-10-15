@@ -254,3 +254,85 @@ test("a synthesis that fails in a target state says to re-run the target's own c
   assert.equal(failed.status, 1, failed.output);
   assert.match(failed.stderr, /run `backpass propose --memory-file CLAUDE\.md` again/);
 });
+
+function writeTargetProposal(dir, file, edits) {
+  const targetDir = targetStateDir({ root: path.join(dir, ".backpass") }, file);
+  fs.mkdirSync(targetDir, { recursive: true });
+  const proposal = {
+    scope: "project",
+    memoryFile: { path: file },
+    edits: edits.map((id) => ({ id, kind: "add", file, title: `t ${id}`, after: "- Keep commits small.\n" })),
+    stats: {},
+  };
+  fs.writeFileSync(path.join(targetDir, "proposal.json"), JSON.stringify(proposal));
+  return targetDir;
+}
+
+function waitingTargets(dir, home) {
+  const status = cli(dir, home, ["status", "--json"]);
+  assert.equal(status.status, 0, status.output);
+  return JSON.parse(status.stdout).targetProposals;
+}
+
+test("status --json names the waiting target proposals with the command that applies each", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "backpass-target-home-"));
+  const dir = initRepo({ "AGENTS.md": AGENTS, "CLAUDE.md": CLAUDE });
+  writeTargetProposal(dir, "CLAUDE.md", ["e1", "e2"]);
+
+  const status = cli(dir, home, ["status", "--json"]);
+  assert.equal(status.status, 0, status.output);
+  const report = JSON.parse(status.stdout);
+  assert.equal(report.proposal, null);
+  assert.deepEqual(report.targetProposals, [
+    { path: "CLAUDE.md", edits: 2, apply: "backpass apply --memory-file CLAUDE.md" },
+  ]);
+});
+
+test("a target proposal stops waiting once every edit is decided, and stays listed while any is undecided", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "backpass-target-home-"));
+  const dir = initRepo({ "AGENTS.md": AGENTS, "CLAUDE.md": CLAUDE });
+  const targetDir = writeTargetProposal(dir, "CLAUDE.md", ["e1", "e2"]);
+  const apply = (vector) => cli(dir, home, ["apply", "--memory-file", "CLAUDE.md", "--decisions", vector]);
+
+  const dry = cli(dir, home, [
+    "apply",
+    "--memory-file",
+    "CLAUDE.md",
+    "--decisions",
+    "e1=rejected e2=rejected",
+    "--dry-run",
+  ]);
+  assert.equal(dry.status, 0, dry.output);
+  assert.equal(waitingTargets(dir, home).length, 1, "a dry run reviews nothing");
+
+  const partial = apply("e1=rejected");
+  assert.equal(partial.status, 0, partial.output);
+  assert.deepEqual(
+    waitingTargets(dir, home).map((other) => other.path),
+    ["CLAUDE.md"],
+    "e2 is still undecided",
+  );
+
+  const full = apply("e1=rejected e2=rejected");
+  assert.equal(full.status, 0, full.output);
+  assert.ok(JSON.parse(fs.readFileSync(path.join(targetDir, "proposal.json"), "utf8")).reviewedAt);
+  assert.deepEqual(waitingTargets(dir, home), []);
+  const bare = cli(dir, home, ["apply", "--no-ui"]);
+  assert.equal(bare.status, 1, bare.output);
+  assert.doesNotMatch(bare.stderr, /--memory-file CLAUDE\.md/);
+});
+
+test("a suggested command quotes the file name as one POSIX shell word", { skip: process.platform === "win32" }, () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "backpass-target-home-"));
+  const dir = initRepo({ "AGENTS.md": AGENTS });
+  const file = "O'Reilly $HOME `id` notes.md";
+  writeTargetProposal(dir, file, ["e1"]);
+
+  const [{ apply }] = waitingTargets(dir, home);
+  assert.equal(apply, `backpass apply --memory-file 'O'\\''Reilly $HOME \`id\` notes.md'`);
+  const words = spawnSync("sh", ["-c", `set -- ${apply}; printf '%s\\n' "$@"`], { encoding: "utf8" });
+  assert.deepEqual(words.stdout.split("\n").slice(0, -1), ["backpass", "apply", "--memory-file", file]);
+
+  const retry = cli(dir, home, ["apply", "--no-ui"]);
+  assert.match(retry.stderr, new RegExp(apply.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+});

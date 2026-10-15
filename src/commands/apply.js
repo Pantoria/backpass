@@ -162,6 +162,11 @@ export async function cmdApply(ctx) {
   });
 
   if (surfaceFile) await closeApplySurface(surfaceFile);
+  // Every edit decided and nothing failed: the review is done, so this proposal stops being listed as waiting.
+  if (!ctx.flags["dry-run"] && !results.failed.length && editIds.every((id) => decisions[id] !== "skipped")) {
+    proposal.reviewedAt = new Date().toISOString();
+    config.state.writeProposal(proposal);
+  }
 
   if (ctx.flags.json) {
     json({ decisions, rejectReasons, results, mix: proposal.stats.corpusMix || null });

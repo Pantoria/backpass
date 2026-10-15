@@ -151,8 +151,12 @@ function trainedMemoryPath(root, files, user) {
 export function stateCommand(subcommand, state, scope) {
   const command = subcommand ? `backpass ${subcommand}` : "backpass";
   if (!state?.surface) return command;
-  const file = /\s/.test(state.surface) ? JSON.stringify(state.surface) : state.surface;
-  return `${command}${scope?.kind === "user" ? " --scope user" : ""} --memory-file ${file}`;
+  return `${command}${scope?.kind === "user" ? " --scope user" : ""} --memory-file ${shellQuote(state.surface)}`;
+}
+
+/** One POSIX shell word for `value`: bare when it is plainly safe, else single-quoted. */
+function shellQuote(value) {
+  return /^[\w./@%+=:,-]+$/.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 /** The apply command that reads the proposal kept in `state`. */
