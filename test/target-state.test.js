@@ -313,14 +313,63 @@ test("a target proposal stops waiting once every edit is decided, and stays list
     "e2 is still undecided",
   );
 
+  const saved = fs.readFileSync(path.join(targetDir, "proposal.json"), "utf8");
   const full = apply("e1=rejected e2=rejected");
   assert.equal(full.status, 0, full.output);
-  assert.ok(JSON.parse(fs.readFileSync(path.join(targetDir, "proposal.json"), "utf8")).reviewedAt);
+  assert.equal(fs.readFileSync(path.join(targetDir, "proposal.json"), "utf8"), saved, "apply never rewrites it");
   assert.deepEqual(waitingTargets(dir, home), []);
   const bare = cli(dir, home, ["apply", "--no-ui"]);
   assert.equal(bare.status, 1, bare.output);
   assert.doesNotMatch(bare.stderr, /--memory-file CLAUDE\.md/);
 });
+
+test(
+  "a newer proposal saved during the review stays intact and waiting",
+  { skip: process.platform === "win32" },
+  () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "backpass-target-home-"));
+    const dir = initRepo({ "AGENTS.md": AGENTS, "CLAUDE.md": CLAUDE });
+    const targetDir = writeTargetProposal(dir, "CLAUDE.md", ["e1"]);
+    const proposalFile = path.join(targetDir, "proposal.json");
+    const newer = {
+      scope: "project",
+      memoryFile: { path: "CLAUDE.md" },
+      edits: ["e1", "e2", "e3"].map((id) => ({ id, kind: "add", file: "CLAUDE.md", title: `newer ${id}` })),
+      stats: {},
+    };
+    // The review surface: while the reviewer decides, a `backpass propose` finishes and saves
+    // a newer proposal; then the reviewer sends the decision for the proposal they saw.
+    const lavish = path.join(binDir, "lavish-during-review");
+    fs.writeFileSync(
+      lavish,
+      `#!${process.execPath}
+const fs = require("node:fs");
+const [cmd, file] = process.argv.slice(2);
+if (cmd === "poll") {
+  fs.writeFileSync(${JSON.stringify(proposalFile)}, ${JSON.stringify(JSON.stringify(newer))});
+  process.stdout.write("session:\\n  file: " + file + "\\n  status: feedback\\nBACKPASS_DECISIONS e1=rejected\\n");
+} else if (cmd === "end") {
+  process.stdout.write("session:\\n  file: " + file + "\\n  status: ended\\n");
+} else {
+  process.stdout.write("session:\\n  file: " + cmd + "\\n  url: \\"http://127.0.0.1:4387/session/x\\"\\n  status: opened\\n");
+}
+`,
+    );
+    fs.chmodSync(lavish, 0o755);
+
+    const review = spawnSync(process.execPath, [CLI, "apply", "--memory-file", "CLAUDE.md", "--no-open"], {
+      cwd: dir,
+      env: { ...process.env, HOME: home, USERPROFILE: home, BACKPASS_LAVISH_BIN: lavish, NO_COLOR: "1" },
+      encoding: "utf8",
+      timeout: 20000,
+    });
+    assert.equal(review.status, 0, `${review.stdout}${review.stderr}`);
+    assert.deepEqual(JSON.parse(fs.readFileSync(proposalFile, "utf8")), newer, "the newer proposal survives");
+    assert.deepEqual(waitingTargets(dir, home), [
+      { path: "CLAUDE.md", edits: 3, apply: "backpass apply --memory-file CLAUDE.md" },
+    ]);
+  },
+);
 
 test("a suggested command quotes the file name as one POSIX shell word", { skip: process.platform === "win32" }, () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "backpass-target-home-"));

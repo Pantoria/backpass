@@ -4,7 +4,7 @@ import { applyDecisions } from "../apply/writer.js";
 import { closeApplySurface, openApplySurface, pollDecisions, renderApplySurface } from "../apply/lavish.js";
 import { reviewInTerminal } from "../apply/terminal.js";
 import { openInBrowser } from "../apply/browser.js";
-import { REJECT_REASONS } from "../state.js";
+import { REJECT_REASONS, proposalHash } from "../state.js";
 import { budgetBar, formatTokens } from "../tokens.js";
 import { applyCommand, describeTarget, stateCommand } from "../target.js";
 
@@ -78,6 +78,8 @@ function waitingProposals(state, scope) {
 export async function cmdApply(ctx) {
   const { config, repo } = ctx;
   const proposal = config.state.readProposal();
+  // Hashed as read, before the review: the marker names exactly the proposal that was reviewed.
+  const reviewed = proposal && proposalHash(proposal);
   const run = stateCommand("", config.state, ctx.scope);
 
   if (!proposal) {
@@ -162,10 +164,11 @@ export async function cmdApply(ctx) {
   });
 
   if (surfaceFile) await closeApplySurface(surfaceFile);
-  // Every edit decided and nothing failed: the review is done, so this proposal stops being listed as waiting.
-  if (!ctx.flags["dry-run"] && !results.failed.length && editIds.every((id) => decisions[id] !== "skipped")) {
-    proposal.reviewedAt = new Date().toISOString();
-    config.state.writeProposal(proposal);
+  // Every edit decided and nothing failed: the review is done, so this target proposal stops being
+  // listed as waiting. Only target states are listed, so the default `.backpass/` gets no marker.
+  const done = !ctx.flags["dry-run"] && !results.failed.length && editIds.every((id) => decisions[id] !== "skipped");
+  if (config.state.surface && done) {
+    config.state.markReviewed(reviewed);
   }
 
   if (ctx.flags.json) {

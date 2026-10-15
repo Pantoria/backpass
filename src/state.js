@@ -56,6 +56,7 @@ export class State {
     this.scanCachePath = path.join(this.root, "scan-cache.json");
     this.summaryPath = path.join(this.root, "evidence-summary.json");
     this.proposalPath = path.join(this.root, "proposal.json");
+    this.reviewedPath = path.join(this.root, "reviewed.json");
     this.rejectionsPath = path.join(this.root, "rejections.json");
     this.gapLedgerPath = path.join(this.root, "gap-ledger.json");
     this.probeCachePath = path.join(this.root, "agent-probe-cache.json");
@@ -208,13 +209,22 @@ export class State {
     this.writeJsonFile(this.proposalPath, proposal);
   }
 
+  /**
+   * Records that every edit of the proposal hashing to `hash` (`proposalHash`) was decided.
+   * A marker beside proposal.json, never a rewrite of it: a newer proposal saved during
+   * the review hashes differently, so it stays intact and listed.
+   */
+  markReviewed(hash) {
+    this.writeJsonFile(this.reviewedPath, { proposal: hash });
+  }
+
   clearProposal() {
     fs.rmSync(this.proposalPath, { force: true });
   }
 
   /**
    * Gate-clean proposals kept by this scope's target states that still wait for a review
-   * (not applied, and not every edit decided - `reviewedAt`), so a command reading the
+   * (not applied, and not the proposal `markReviewed` recorded), so a command reading the
    * default proposal can name the ones it is not reading. Empty for a target state: only
    * the scope root holds `targets/`.
    */
@@ -224,11 +234,13 @@ export class State {
     return fs
       .readdirSync(dir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
-      .map((entry) => this.readJsonFile(path.join(dir, entry.name, "proposal.json"), null))
-      .filter(
-        (proposal) =>
-          proposal?.memoryFile?.path && !proposal.appliedAt && !proposal.reviewedAt && !proposal.violations?.length,
-      )
+      .map((entry) => ({
+        proposal: this.readJsonFile(path.join(dir, entry.name, "proposal.json"), null),
+        reviewed: this.readJsonFile(path.join(dir, entry.name, "reviewed.json"), null)?.proposal,
+      }))
+      .filter(({ proposal, reviewed }) => proposal && reviewed !== proposalHash(proposal))
+      .map(({ proposal }) => proposal)
+      .filter((proposal) => proposal.memoryFile?.path && !proposal.appliedAt && !proposal.violations?.length)
       .filter((proposal) => proposal.edits?.length)
       .map((proposal) => ({ path: proposal.memoryFile.path, edits: proposal.edits.length }))
       .sort((a, b) => a.path.localeCompare(b.path));
@@ -281,6 +293,11 @@ export function safeFileName(id) {
 /** Where a named, non-default root memory file keeps its per-surface state. */
 export function targetStateDir(rootState, memoryPath) {
   return path.join(rootState.root, "targets", `${safeFileName(memoryPath)}-${sha256(memoryPath).slice(0, 8)}`);
+}
+
+/** The content identity of a proposal as read from proposal.json. */
+export function proposalHash(proposal) {
+  return sha256(JSON.stringify(proposal));
 }
 
 export function sha256(text) {
