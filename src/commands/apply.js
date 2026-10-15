@@ -6,7 +6,7 @@ import { reviewInTerminal } from "../apply/terminal.js";
 import { openInBrowser } from "../apply/browser.js";
 import { REJECT_REASONS } from "../state.js";
 import { budgetBar, formatTokens } from "../tokens.js";
-import { describeTarget } from "../target.js";
+import { applyCommand, describeTarget } from "../target.js";
 
 /**
  * The human gate. `backpass apply` is the only command that writes to the repo.
@@ -73,7 +73,13 @@ export async function cmdApply(ctx) {
   const proposal = config.state.readProposal();
 
   if (!proposal) {
-    throw new UserError("no proposal to apply", "run `backpass` first to produce one");
+    const others = config.state.listTargetProposals();
+    throw new UserError(
+      "no proposal to apply",
+      others.length
+        ? `proposals for other memory files are waiting: ${others.map((other) => `\`${applyCommand({ surface: other.path }, ctx.scope)}\``).join(", ")}`
+        : "run `backpass` first to produce one",
+    );
   }
   const proposalScope = proposal.scope || "project";
   const runScope = ctx.scope?.kind || "project";

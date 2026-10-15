@@ -16,6 +16,7 @@ import { emitProgress } from "../progress.js";
 import { nestedCorpora, primaryMemoryFile } from "./analyze.js";
 import { mergeNestedProposals, nestedContext, routingFor } from "../nested.js";
 import { printUsage } from "./usage.js";
+import { applyCommand } from "../target.js";
 import { closeRemoteDiscovery, discoverForRun } from "./scan.js";
 import { capTranscripts } from "../sample.js";
 import { isEvidenceFresh } from "../state.js";
@@ -142,7 +143,7 @@ export async function runProposal(ctx, precomputed = null) {
     return await runProposalCore(ctx, precomputed);
   } finally {
     await closeRemoteDiscovery(ctx);
-    pruneHostCache(ctx.config.state.root);
+    pruneHostCache(ctx.config.state.scopeRoot);
   }
 }
 
@@ -241,10 +242,11 @@ async function proposeNested(ctx, { skills, corpus, routing, rootOwnedGaps }) {
 
 /**
  * @param {object} proposal
- * @param {{ applied?: boolean, analysisUsage?: import("../acpx.js").UsageRecord[] }} [options]
- *   `analysisUsage` is the tier-1 accounting of the same run, when the caller ran it.
+ * @param {{ applied?: boolean, analysisUsage?: import("../acpx.js").UsageRecord[], apply?: string }} [options]
+ *   `analysisUsage` is the tier-1 accounting of the same run, when the caller ran it;
+ *   `apply` is the command that reads this proposal back (`applyCommand`).
  */
-export function printProposal(proposal, { applied = false, analysisUsage = [] } = {}) {
+export function printProposal(proposal, { applied = false, analysisUsage = [], apply = "backpass apply" } = {}) {
   out("");
   const mix = proposal.stats.corpusMix ? ` · ${formatCorpusMix(proposal.stats.corpusMix)}` : "";
   out(
@@ -295,7 +297,7 @@ export function printProposal(proposal, { applied = false, analysisUsage = [] } 
   printUsage({ tier1: analysisUsage, tier2: proposal.usage || [] });
   if (applied) return;
   out("");
-  out("Review and apply with `backpass apply` (nothing has been written).");
+  out(`Review and apply with \`${apply}\` (nothing has been written).`);
 }
 
 /** True when a violation is about the always-loaded budget rather than the annotation. */
@@ -373,7 +375,7 @@ export async function cmdPropose(ctx) {
       json(proposal);
       return 0;
     }
-    printProposal(proposal);
+    printProposal(proposal, { apply: applyCommand(ctx.config.state, ctx.scope) });
     return 0;
   } catch (err) {
     if (err instanceof ProposalViolation) {
