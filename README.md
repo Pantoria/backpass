@@ -624,6 +624,9 @@ the same budget gate as synthesis: stay under the cap, or shrink if the file is 
 over. An incompatible set writes nothing and does not record rejections, so you can pick
 a compatible set and try again. If the run shrinks the file but leaves it above the cap,
 that is progress, not a failure: it is written, and the remaining overage is printed.
+The cap is the one the proposal was made under: if the current config (or `--budget`) names
+a different budget for a file the proposal edits, apply refuses before the review, naming
+both numbers, and you either re-run apply with the original budget or propose again.
 
 Apply preflights every decided edit before writing. The proposal was measured against exact
 versions of your memory file and every skill file it proposes editing, so apply first checks
@@ -708,8 +711,9 @@ weight of its own; a missing file is reported, never created:
   addition in the wrong file. A rewrite or removal stays with the file whose text it
   changes, and a failed skill trigger stays with the root, which owns the skill layer.
 - **A budget per file.** Each nested file is held to `nestedBudgetTokens` (`budgetTokens`
-  when unset), at propose and again at apply. An unchanged root over budget does not block
-  a combined proposal if at least one nested file actually runs synthesis with analyzed
+  when unset), at propose and again at apply; apply refuses a nested file whose
+  configured budget changed since the proposal was made. An unchanged root over budget
+  does not block a combined proposal if at least one nested file actually runs synthesis with analyzed
   evidence; if every nested file is skipped, the normal root shrink gate still applies.
   Root edits must still clear that gate, and a nested edit must clear its own file's gate.
   Skills belong to the root surface, so a nested run neither edits a skill nor extracts
