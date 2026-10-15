@@ -147,9 +147,15 @@ function trainedMemoryPath(root, files, user) {
   return pathInRoot(files[0], root);
 }
 
+/** The `backpass` command (`subcommand` empty for a full run) that reads and writes the state in `state`. */
+export function stateCommand(subcommand, state, scope) {
+  const command = subcommand ? `backpass ${subcommand}` : "backpass";
+  if (!state?.surface) return command;
+  const file = /\s/.test(state.surface) ? JSON.stringify(state.surface) : state.surface;
+  return `${command}${scope?.kind === "user" ? " --scope user" : ""} --memory-file ${file}`;
+}
+
 /** The apply command that reads the proposal kept in `state`. */
 export function applyCommand(state, scope) {
-  if (!state?.surface) return "backpass apply";
-  const file = /\s/.test(state.surface) ? JSON.stringify(state.surface) : state.surface;
-  return `backpass apply${scope?.kind === "user" ? " --scope user" : ""} --memory-file ${file}`;
+  return stateCommand("apply", state, scope);
 }

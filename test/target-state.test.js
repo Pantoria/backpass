@@ -186,6 +186,11 @@ test("apply reads the named file's proposal, and a bare apply names the proposal
   const named = cli(dir, home, ["apply", "--memory-file", "CLAUDE.md", "--no-ui"]);
   assert.equal(named.status, 1, named.output);
   assert.match(named.stderr, /already applied by the CLAUDE\.md marker/);
+  assert.match(named.stderr, /`backpass --memory-file CLAUDE\.md` again/);
+
+  const targeted = cli(dir, home, ["apply", "--target", "CLAUDE.md", "--no-ui"]);
+  assert.equal(targeted.status, 1, targeted.output);
+  assert.match(targeted.stderr, /apply it with `backpass apply --memory-file CLAUDE\.md`/);
 
   delete proposal.appliedAt;
   fs.writeFileSync(path.join(claudeDir, "proposal.json"), JSON.stringify(proposal));
@@ -193,6 +198,16 @@ test("apply reads the named file's proposal, and a bare apply names the proposal
   assert.equal(bare.status, 1, bare.output);
   assert.match(bare.stderr, /no proposal to apply/);
   assert.match(bare.stderr, /`backpass apply --memory-file CLAUDE\.md`/);
+
+  fs.mkdirSync(path.join(dir, ".backpass"), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, ".backpass", "proposal.json"),
+    JSON.stringify({ ...proposal, memoryFile: { path: "AGENTS.md" }, appliedAt: "2026-01-02T00:00:00.000Z" }),
+  );
+  const applied = cli(dir, home, ["apply", "--no-ui"]);
+  assert.equal(applied.status, 1, applied.output);
+  assert.match(applied.stderr, /already applied/);
+  assert.match(applied.stderr, /`backpass apply --memory-file CLAUDE\.md`/);
 });
 
 test("a target state shares the scope-level files and lives under the scope's own state root", () => {

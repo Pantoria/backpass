@@ -16,7 +16,7 @@ import { HostCache, pruneHostCache } from "../discovery/cache.js";
 import { budgetBar, budgetStatus, formatTokens } from "../tokens.js";
 import { table } from "./scan.js";
 import { candidateKey, isProbeEntryFresh, resolvedEffort } from "../agents.js";
-import { applyCommand } from "../target.js";
+import { applyCommand, stateCommand } from "../target.js";
 
 export async function cmdStatus(ctx) {
   const { repo, config, scope } = ctx;
@@ -179,7 +179,7 @@ export async function cmdStatus(ctx) {
 
   out(color.dim("PROPOSAL"));
   if (!proposal) {
-    out("  none yet - run `backpass`");
+    out(`  none yet - run \`${stateCommand("", state, scope)}\``);
   } else {
     out(`  generated       ${proposal.generatedAt}`);
     out(
